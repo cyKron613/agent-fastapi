@@ -1,0 +1,11 @@
+# Agent-FastAPI 框架依赖
+fastapi==0.111.1
+python-decouple==3.8
+python-dotenv==1.1.1
+loguru==0.7.3
+pydantic-settings==2.11.0
+asyncpg==0.30.0
+fastapi_cdn_host==0.9.2
+sqlalchemy==2.0.46
+redis==7.1.0
+httpx==0.28.1
