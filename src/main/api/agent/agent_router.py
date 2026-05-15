@@ -19,7 +19,7 @@ Agent Router - Agent 框架核心 API 路由
 """
 
 import time
-from typing import List, Optional
+from typing import Optional
 
 from fastapi import APIRouter, Depends, Body, Query, status, HTTPException
 from fastapi.responses import StreamingResponse, JSONResponse
@@ -70,15 +70,15 @@ _start_time = time.time()
 async def chat_completions(
     request: ChatRequest = Body(
         ...,
-        examples=[
-            {
+        openapi_examples={
+            "basic_chat": {
                 "summary": "基础对话",
                 "value": {
                     "messages": [{"role": "user", "content": "你好"}],
                     "stream": True,
                 },
             },
-            {
+            "session_chat": {
                 "summary": "带会话ID的多轮对话",
                 "value": {
                     "messages": [{"role": "user", "content": "继续上面的话题"}],
@@ -87,7 +87,23 @@ async def chat_completions(
                     "stream": True,
                 },
             },
-        ],
+            "image_url_chat": {
+                "summary": "图片 URL 对话",
+                "value": {
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": "请描述这张图片"},
+                                {"type": "image_url", "image_url": {"url": "https://th.bing.com/th/id/R.00fad94b5d76b41296e1ff194a7c701b?rik=cuwLt8%2f25QRvNw&riu=http%3a%2f%2f5b0988e595225.cdn.sohucs.com%2fimages%2f20200314%2fdbfa10d20bf1470187a5eabc6cbf094e.jpeg&ehk=vx8h%2fLSyVjscWqD8nNIsX4qB4GHpM85Z70paWpEHNA4%3d&risl=&pid=ImgRaw&r=0"}},
+                            ],
+                        }
+                    ],
+                    "chat_type": "vision",
+                    "stream": True,
+                },
+            },
+        },
     ),
     agent_service: DefaultAgentService = Depends(
         get_async_service(ser_type=DefaultAgentService, repo_type=ChatRepository)

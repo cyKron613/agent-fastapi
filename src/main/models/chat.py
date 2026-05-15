@@ -10,7 +10,7 @@ POSTGRES_SCHEMA = settings.POSTGRES_SCHEMA
 
 class AgentChatSession(Base):
     """会话表 - 记录每个对话会话"""
-    __tablename__ = "agent_chat_sessions"
+    __tablename__ = "agent_chat_sessions_test"
     __table_args__ = {"schema": POSTGRES_SCHEMA}
 
     id = Column(UUID, primary_key=True, default=generate_uuid)
@@ -29,11 +29,11 @@ class AgentChatSession(Base):
 
 class AgentChatMessage(Base):
     """消息表 - 记录每条对话消息"""
-    __tablename__ = "agent_chat_messages"
+    __tablename__ = "agent_chat_messages_test"
     __table_args__ = {"schema": POSTGRES_SCHEMA}
 
     id = Column(UUID, primary_key=True, default=generate_uuid)
-    session_id = Column(UUID, ForeignKey(f"{POSTGRES_SCHEMA}.agent_chat_sessions.id", ondelete="CASCADE"), nullable=False)
+    session_id = Column(UUID, ForeignKey(f"{POSTGRES_SCHEMA}.agent_chat_sessions_test.id", ondelete="CASCADE"), nullable=False)
     user_id = Column(String(64), comment="用户ID")
     role = Column(String(20), nullable=False, comment="角色: system/user/assistant/tool")
     content = Column(Text, nullable=False, comment="消息内容")

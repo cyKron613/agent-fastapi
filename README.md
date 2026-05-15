@@ -5,6 +5,7 @@
 ## 目录
 
 - [项目简介](#项目简介)
+- [新版本更新](#新版本更新)
 - [核心特性](#核心特性)
 - [技术栈](#技术栈)
 - [项目结构](#项目结构)
@@ -27,6 +28,7 @@ Agent-FastAPI 是一个 **通用的 Agent 开发框架**，提供了构建对话
 
 - **会话管理** — 创建、查询、重命名、删除会话
 - **对话接口** — 兼容 OpenAI Chat Completions API 格式 (流式/非流式)
+- **多模态图片输入** — 支持 OpenAI `image_url` 消息格式，统一走 `/chat/completions`
 - **消息持久化** — 自动保存对话历史到 PostgreSQL
 - **停止响应** — 支持中断正在进行的流式生成
 - **Agent 信息** — 标准化的 Agent 元信息和能力声明
@@ -36,11 +38,28 @@ Agent-FastAPI 是一个 **通用的 Agent 开发框架**，提供了构建对话
 
 ---
 
+## 新版本更新
+
+本版本重点增强了图片对话、多模态消息和会话安全性：
+
+- **统一图片对话入口**：图片 URL 直接放入 `messages[*].content[*].image_url.url`，仍然调用 `POST /chat/completions`，不再单独维护 `/upload` 接口。
+- **OpenAI 多模态消息兼容**：`Message.content` 支持字符串和 OpenAI content parts 数组，例如 `text` + `image_url`。
+- **快捷字段**：支持 `query` + `images` 快捷请求格式；当不传 `messages` 时，框架会自动构造一条用户多模态消息。
+- **视觉模型自动切换**：检测到 `image_url` 后，如果当前模型不是视觉模型，会自动切到 `LLM_VISION_MODEL_NAME`，默认 `qwen-vl-max`。
+- **多模态历史持久化**：图片消息会以 JSON 字符串保存到数据库，读取历史时会自动还原为多模态结构。
+- **图片元数据回显**：用户消息会把图片 URL 写入消息 `metadata.images`，并保留 `chat_type`。
+- **会话用户隔离**：恢复已有会话时要求同时传 `session_id` 和 `user_id`，避免跨用户串会话。
+- **Swagger 多示例展示**：对话接口使用 `openapi_examples`，可展示基础对话、多轮对话、图片 URL 对话多个示例。
+
+---
+
 ## 核心特性
 
 | 特性 | 说明 |
 |------|------|
 | 🤖 **OpenAI 兼容** | Chat Completions API 格式，前端可直接对接 |
+| 🖼️ **多模态图片** | 支持 `content` 数组和 `image_url` 图片输入 |
+| 👁️ **视觉模型路由** | 检测到图片后自动切换到 `LLM_VISION_MODEL_NAME` |
 | 🌊 **流式/非流式** | 同时支持 SSE 流式和一次性 JSON 响应 |
 | 📝 **自动会话管理** | 自动创建会话、生成标题、持久化消息 |
 | 🔌 **插件式架构** | 继承 `BaseAgentService` 实现自定义 Agent |
@@ -197,6 +216,7 @@ TEST_REDIS_DB=0
 LLM_API_KEY=sk-your-api-key
 LLM_BASE_URL=https://api.openai.com/v1
 LLM_MODEL_NAME=gpt-4o
+LLM_VISION_MODEL_NAME=gpt-4o
 ```
 
 ### 4. 初始化数据库
@@ -281,13 +301,51 @@ python main.py
   "model": "gpt-4o",
   "temperature": 0.7,
   "max_tokens": 2048,
+  "chat_type": "chat",
   "metadata": {}
 }
 ```
 
 - `session_id` 为空时自动创建新会话
+- 传 `session_id` 恢复历史时建议同时传 `user_id`，框架会按用户隔离会话
 - `stream=true` 返回 SSE 流式响应
 - `stream=false` 返回标准 JSON 响应 (OpenAI 格式)
+- `content` 可为普通字符串，也可为 OpenAI 多模态 content parts 数组
+- 不传 `messages` 时，可用 `query` + `images` 快捷字段自动构造用户消息
+
+**图片 URL 请求体 (OpenAI 多模态格式):**
+```json
+{
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {"type": "text", "text": "请描述这张图片"},
+        {
+          "type": "image_url",
+          "image_url": {
+            "url": "https://example.com/image.png"
+          }
+        }
+      ]
+    }
+  ],
+  "chat_type": "vision",
+  "stream": true
+}
+```
+
+**图片 URL 快捷请求体:**
+```json
+{
+  "query": "请描述这张图片",
+  "images": ["https://example.com/image.png"],
+  "chat_type": "vision",
+  "stream": true
+}
+```
+
+> 检测到 `image_url` 后，默认实现会自动使用 `LLM_VISION_MODEL_NAME`。例如默认文本模型是 `qwen3-max` 时，图片请求会自动切到 `qwen-vl-max`。
 
 **流式响应格式 (SSE):**
 ```
@@ -348,7 +406,7 @@ data: [DONE]
 ```python
 # src/main/service/agent/my_agent_service.py
 
-from typing import AsyncGenerator, List, Dict, Optional
+from typing import AsyncGenerator, List, Dict, Any, Optional
 from src.main.service.agent.base_agent_service import BaseAgentService
 from src.main.schema.chat import ChatRequest
 from src.main.schema.agent import AgentInfoResponse
@@ -369,7 +427,7 @@ class MyAgentService(BaseAgentService):
 
     async def process_chat(
         self,
-        messages: List[Dict[str, str]],
+      messages: List[Dict[str, Any]],
         request: ChatRequest,
         session_id: str,
     ) -> AsyncGenerator[str, None]:
@@ -454,7 +512,7 @@ async def chat_completions(
 
 ## 数据库设计
 
-### agent_chat_sessions (会话表)
+### agent_chat_sessions_test (会话表)
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
@@ -468,7 +526,7 @@ async def chat_completions(
 | `created_at` | TIMESTAMP | 创建时间 |
 | `updated_at` | TIMESTAMP | 更新时间 |
 
-### agent_chat_messages (消息表)
+### agent_chat_messages_test (消息表)
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
@@ -504,8 +562,10 @@ async def chat_completions(
 | `LLM_API_KEY` | API 密钥 | `sk-xxxx` |
 | `LLM_BASE_URL` | API 地址 (兼容 OpenAI 格式) | `https://api.openai.com/v1` |
 | `LLM_MODEL_NAME` | 默认模型 | `gpt-4o` |
+| `LLM_VISION_MODEL_NAME` | 图片/多模态请求默认视觉模型 | `qwen-vl-max` / `gpt-4o` |
 
 > **支持任何兼容 OpenAI API 格式的 LLM 服务**，如: OpenAI、Azure OpenAI、通义千问、DeepSeek、Ollama 等。
+> 图片理解需要模型本身支持视觉能力；纯文本模型即使收到 `image_url` 也无法分析图片。
 
 ### 数据库配置
 
@@ -605,7 +665,7 @@ kubectl apply -f deploy/k8s/prod/
                            │
 ┌──────────────────────────▼───────────────────────────────────┐
 │                   Database (PostgreSQL)                        │
-│              agent_chat_sessions  |  agent_chat_messages          │
+│              agent_chat_sessions_test  |  agent_chat_messages_test          │
 └──────────────────────────────────────────────────────────────┘
 ```
 

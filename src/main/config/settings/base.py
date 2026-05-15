@@ -102,6 +102,7 @@ class BackendBaseSettings(BaseSettings):
     LLM_API_KEY: str = config("LLM_API_KEY", default="sk-...", cast=str)
     LLM_BASE_URL: str = config("LLM_BASE_URL", default="https://api.openai.com/v1", cast=str)
     LLM_MODEL_NAME: str = config("LLM_MODEL_NAME", default="gpt-4o", cast=str)
+    LLM_VISION_MODEL_NAME: str = config("LLM_VISION_MODEL_NAME", default="qwen-vl-max", cast=str)
 
     ALLOWED_ORIGINS: List[str] = ["*"]
     ALLOWED_METHODS: List[str] = ["*"]

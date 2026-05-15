@@ -97,7 +97,7 @@ class ExampleCustomAgent(DefaultAgentService):
     #
     # async def process_chat(
     #     self,
-    #     messages: List[Dict[str, str]],
+    #     messages: List[Dict[str, Any]],
     #     request: ChatRequest,
     #     session_id: str,
     # ) -> AsyncGenerator[str, None]:

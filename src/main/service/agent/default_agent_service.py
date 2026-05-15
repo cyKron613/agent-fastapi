@@ -38,6 +38,42 @@ class DefaultAgentService(BaseAgentService):
         self.llm_url = settings.LLM_BASE_URL
         self.llm_key = settings.LLM_API_KEY
         self.llm_model = settings.LLM_MODEL_NAME
+        self.vision_model = settings.LLM_VISION_MODEL_NAME
+
+    @staticmethod
+    def _message_has_image(message: Dict[str, Any]) -> bool:
+        """判断单条消息是否包含 OpenAI image_url 内容。"""
+        content = message.get("content")
+        if not isinstance(content, list):
+            return False
+        return any(
+            isinstance(item, dict)
+            and item.get("type") == "image_url"
+            and isinstance(item.get("image_url"), dict)
+            and bool(item["image_url"].get("url"))
+            for item in content
+        )
+
+    @classmethod
+    def _messages_have_images(cls, messages: List[Dict[str, Any]]) -> bool:
+        """判断上下文中是否包含图片输入。"""
+        return any(cls._message_has_image(message) for message in messages)
+
+    @staticmethod
+    def _is_vision_model(model: str) -> bool:
+        """粗略判断模型名是否为视觉/多模态模型。"""
+        model_lower = model.lower()
+        return any(marker in model_lower for marker in ("vl", "vision", "visual", "omni", "gpt-4o"))
+
+    def _resolve_model(self, request: ChatRequest, messages: List[Dict[str, Any]]) -> str:
+        """根据消息内容选择文本模型或视觉模型。"""
+        model = request.model or self.llm_model
+        if self._messages_have_images(messages) and self.vision_model and not self._is_vision_model(model):
+            logger.info(
+                f"[DefaultAgent] Vision input detected, switching model from {model} to {self.vision_model}"
+            )
+            return self.vision_model
+        return model
 
     def get_agent_info(self) -> AgentInfoResponse:
         """返回 Agent 基本信息"""
@@ -50,6 +86,7 @@ class DefaultAgentService(BaseAgentService):
                 AgentCapability(name="chat", description="多轮对话", enabled=True),
                 AgentCapability(name="streaming", description="流式输出", enabled=True),
                 AgentCapability(name="session_management", description="会话管理", enabled=True),
+                AgentCapability(name="vision", description="图片理解", enabled=True),
             ],
             models=self.get_available_models(),
             default_model=self.llm_model,
@@ -57,7 +94,7 @@ class DefaultAgentService(BaseAgentService):
 
     def get_available_models(self) -> List[AgentModelInfo]:
         """返回可用模型列表"""
-        return [
+        models = [
             AgentModelInfo(
                 id=self.llm_model,
                 name=self.llm_model,
@@ -65,6 +102,16 @@ class DefaultAgentService(BaseAgentService):
                 is_default=True,
             )
         ]
+        if self.vision_model and self.vision_model != self.llm_model:
+            models.append(
+                AgentModelInfo(
+                    id=self.vision_model,
+                    name=self.vision_model,
+                    description=f"Default vision model: {self.vision_model}",
+                    is_default=False,
+                )
+            )
+        return models
 
     def get_system_prompt(self, request: Optional[ChatRequest] = None) -> Optional[str]:
         """
@@ -77,7 +124,7 @@ class DefaultAgentService(BaseAgentService):
 
     async def process_chat(
         self,
-        messages: List[Dict[str, str]],
+        messages: List[Dict[str, Any]],
         request: ChatRequest,
         session_id: str,
     ) -> AsyncGenerator[str, None]:
@@ -91,7 +138,7 @@ class DefaultAgentService(BaseAgentService):
         - 多模型路由
         - 业务数据注入
         """
-        model = request.model or self.llm_model
+        model = self._resolve_model(request, messages)
         payload = {
             "model": model,
             "messages": messages,

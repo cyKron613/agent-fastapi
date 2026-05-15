@@ -31,7 +31,7 @@ class MessageRole(str, Enum):
 class Message(BaseModel):
     """单条消息"""
     role: str = Field(..., description="消息角色")
-    content: str = Field(..., description="消息内容")
+    content: Any = Field(..., description="消息内容，支持文本或 OpenAI 多模态内容数组")
     name: Optional[str] = Field(None, description="发送者名称(可选)")
 
 
@@ -46,6 +46,9 @@ class ChatRequest(BaseModel):
     开发者在实现具体 Agent 时，可通过 metadata 字段传递业务自定义参数。
     """
     messages: Optional[List[Message]] = Field(None, description="对话消息列表")
+    query: Optional[str] = Field(None, description="快捷文本输入，不传 messages 时自动构造用户消息")
+    images: Optional[List[str]] = Field(None, description="快捷图片 URL 列表，不传 messages 时自动构造多模态用户消息")
+    chat_type: Optional[str] = Field(None, description="对话类型/业务场景标识")
     user_id: Optional[str] = Field(None, description="用户ID")
     session_id: Optional[str] = Field(None, description="会话ID(不传则自动创建)")
     stream: bool = Field(True, description="是否流式返回")

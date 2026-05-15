@@ -35,14 +35,19 @@ class ChatRepository(BaseRepository):
         await self.async_session.flush()
         return session
 
-    async def get_session(self, session_id: str) -> Optional[AgentChatSession]:
-        """获取指定会话(排除已删除)"""
-        result = await self.async_session.execute(
-            select(AgentChatSession).where(
-                AgentChatSession.id == session_id,
-                AgentChatSession.is_deleted == False,  # noqa: E712
-            )
+    async def get_session(
+        self,
+        session_id: str,
+        user_id: Optional[str] = None,
+    ) -> Optional[AgentChatSession]:
+        """获取指定会话(排除已删除)，可选按用户隔离。"""
+        query = select(AgentChatSession).where(
+            AgentChatSession.id == session_id,
+            AgentChatSession.is_deleted == False,  # noqa: E712
         )
+        if user_id is not None:
+            query = query.where(AgentChatSession.user_id == user_id)
+        result = await self.async_session.execute(query)
         return result.scalar_one_or_none()
 
     async def get_all_sessions(
